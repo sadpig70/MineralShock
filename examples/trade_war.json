@@ -1,0 +1,27 @@
+{
+  "reserves": [
+    {
+      "criticality": 0.92,
+      "daily_demand": 40,
+      "mineral": "lithium",
+      "stockpile_tonnes": 12000
+    },
+    {
+      "criticality": 0.85,
+      "daily_demand": 25,
+      "mineral": "cobalt",
+      "stockpile_tonnes": 8000
+    },
+    {
+      "criticality": 0.95,
+      "daily_demand": 15,
+      "mineral": "rare_earth",
+      "stockpile_tonnes": 5000
+    }
+  ],
+  "scenario": {
+    "demand_spiup_pct": 0.35,
+    "name": "trade-war-2026",
+    "supply_disruption_pct": 0.4
+  }
+}

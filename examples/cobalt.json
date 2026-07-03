@@ -1,0 +1,6 @@
+{
+  "criticality": 0.85,
+  "daily_demand": 25,
+  "mineral": "cobalt",
+  "stockpile_tonnes": 8000
+}

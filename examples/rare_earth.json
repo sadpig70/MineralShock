@@ -1,0 +1,6 @@
+{
+  "criticality": 0.95,
+  "daily_demand": 15,
+  "mineral": "rare_earth",
+  "stockpile_tonnes": 5000
+}
