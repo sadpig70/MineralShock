@@ -26,14 +26,16 @@ RARE_EARTH = {
 
 SCENARIO_TRADE_WAR = {
     "name": "trade-war-2026",
-    "demand_spiup_pct": 0.35,
+    "demand_spike_pct": 0.35,
     "supply_disruption_pct": 0.40,
+    "mission_days": 180,
 }
 
 SCENARIO_BLOCKADE = {
     "name": "strait-blockade-2026",
-    "demand_spiup_pct": 0.60,
+    "demand_spike_pct": 0.60,
     "supply_disruption_pct": 0.70,
+    "mission_days": 120,
 }
 
 

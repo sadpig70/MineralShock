@@ -52,16 +52,17 @@ class TestRefusalOption(unittest.TestCase):
 
 class TestSimulateShock(unittest.TestCase):
     def test_single_mineral_shock(self):
-        scenario = {"name": "test", "demand_spiup_pct": 0.5, "supply_disruption_pct": 0.25}
+        scenario = {"name": "test", "demand_spike_pct": 0.5, "supply_disruption_pct": 0.25}
         reserves = [{"mineral": "x", "stockpile_tonnes": 1000, "daily_demand": 10}]
         result = simulate_shock(scenario, reserves)
         self.assertEqual(result["scenario_name"], "test")
+        self.assertEqual(result["demand_spike_pct"], 0.5)
         self.assertEqual(result["total_shortfall_tonnes"], 250.0)
         self.assertEqual(result["affected_minerals"], ["x"])
         self.assertEqual(result["survival_days"], 50.0)
 
     def test_survival_days_is_bottleneck(self):
-        scenario = {"name": "bottleneck", "demand_spiup_pct": 0.0, "supply_disruption_pct": 0.5}
+        scenario = {"name": "bottleneck", "demand_spike_pct": 0.0, "supply_disruption_pct": 0.5}
         reserves = [
             {"mineral": "a", "stockpile_tonnes": 100, "daily_demand": 1},
             {"mineral": "b", "stockpile_tonnes": 50, "daily_demand": 5},
@@ -70,11 +71,23 @@ class TestSimulateShock(unittest.TestCase):
         self.assertEqual(result["survival_days"], 5.0)
 
     def test_no_disruption_no_shortfall(self):
-        scenario = {"name": "mild", "demand_spiup_pct": 0.2, "supply_disruption_pct": 0.0}
+        scenario = {"name": "mild", "demand_spike_pct": 0.2, "supply_disruption_pct": 0.0}
         reserves = [{"mineral": "z", "stockpile_tonnes": 100, "daily_demand": 2}]
         result = simulate_shock(scenario, reserves)
         self.assertEqual(result["total_shortfall_tonnes"], 0.0)
         self.assertEqual(result["affected_minerals"], [])
+
+    def test_mission_days_turns_shortfall_into_requirement_gap(self):
+        scenario = {
+            "name": "mission",
+            "demand_spike_pct": 0.0,
+            "supply_disruption_pct": 0.0,
+            "mission_days": 20,
+        }
+        reserves = [{"mineral": "x", "stockpile_tonnes": 100, "daily_demand": 10}]
+        result = simulate_shock(scenario, reserves)
+        self.assertEqual(result["total_shortfall_tonnes"], 100.0)
+        self.assertFalse(result["system_survives_mission"])
 
 
 class TestSamples(unittest.TestCase):

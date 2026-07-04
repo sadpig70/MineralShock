@@ -11,6 +11,9 @@ from __future__ import annotations
 
 def price_reserve_right(mineral, stockpile_tonnes, criticality, daily_demand):
     """Price the right to draw on a strategic-mineral reserve stockpile."""
+    _require_non_negative("stockpile_tonnes", stockpile_tonnes)
+    _require_unit_interval("criticality", criticality)
+    _require_non_negative("daily_demand", daily_demand)
     coverage_days = (
         stockpile_tonnes / daily_demand if daily_demand > 0 else float("inf")
     )
@@ -29,6 +32,9 @@ def price_reserve_right(mineral, stockpile_tonnes, criticality, daily_demand):
 
 def price_refusal_option(refusal_capacity_tonnes, threat_level, mineral_value):
     """Price the option premium for refusing to ship a mineral."""
+    _require_non_negative("refusal_capacity_tonnes", refusal_capacity_tonnes)
+    _require_unit_interval("threat_level", threat_level)
+    _require_non_negative("mineral_value", mineral_value)
     option_premium = refusal_capacity_tonnes * mineral_value * threat_level * 0.1
     return {
         "refusal_capacity_tonnes": refusal_capacity_tonnes,
@@ -38,15 +44,44 @@ def price_refusal_option(refusal_capacity_tonnes, threat_level, mineral_value):
     }
 
 
+def _require_non_negative(name, value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{name} must be a number")
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+
+
+def _require_unit_interval(name, value):
+    _require_non_negative(name, value)
+    if value > 1:
+        raise ValueError(f"{name} must be within [0, 1]")
+
+
+def _scenario_demand_spike(scenario):
+    if "demand_spike_pct" in scenario:
+        return scenario["demand_spike_pct"]
+    return scenario.get("demand_spiup_pct", 0)
+
+
 def simulate_shock(scenario, reserves):
     """Rehearse a supply shock against a set of mineral reserves.
 
-    scenario: {"name", "demand_spiup_pct", "supply_disruption_pct"}
+    scenario: {"name", "demand_spike_pct", "supply_disruption_pct", "mission_days"?}
     reserves: list of {"mineral", "stockpile_tonnes", "daily_demand", ...}
     """
+    if not isinstance(scenario, dict):
+        raise TypeError("scenario must be a dict")
+    if not isinstance(reserves, list):
+        raise TypeError("reserves must be a list")
+
     name = scenario.get("name", "")
-    demand_spiup_pct = scenario.get("demand_spiup_pct", 0)
+    demand_spike_pct = _scenario_demand_spike(scenario)
     supply_disruption_pct = scenario.get("supply_disruption_pct", 0)
+    mission_days = scenario.get("mission_days")
+    _require_non_negative("demand_spike_pct", demand_spike_pct)
+    _require_unit_interval("supply_disruption_pct", supply_disruption_pct)
+    if mission_days is not None:
+        _require_non_negative("mission_days", mission_days)
 
     per_mineral = []
     affected_minerals = []
@@ -57,19 +92,27 @@ def simulate_shock(scenario, reserves):
         mineral = r.get("mineral", "")
         stockpile = r.get("stockpile_tonnes", 0)
         daily_demand = r.get("daily_demand", 0)
+        _require_non_negative(f"{mineral or 'reserve'}.stockpile_tonnes", stockpile)
+        _require_non_negative(f"{mineral or 'reserve'}.daily_demand", daily_demand)
 
         effective_stockpile = stockpile * (1 - supply_disruption_pct)
-        shocked_demand = daily_demand * (1 + demand_spiup_pct)
+        shocked_demand = daily_demand * (1 + demand_spike_pct)
         if shocked_demand > 0:
             shocked_coverage = effective_stockpile / shocked_demand
         else:
             shocked_coverage = float("inf")
-        shortfall = stockpile * supply_disruption_pct
+        disrupted_stockpile = stockpile * supply_disruption_pct
+        if mission_days is None:
+            shortfall = disrupted_stockpile
+        else:
+            required_for_mission = shocked_demand * mission_days
+            shortfall = max(0.0, required_for_mission - effective_stockpile)
 
         per_mineral.append(
             {
                 "mineral": mineral,
                 "effective_stockpile_tonnes": effective_stockpile,
+                "disrupted_stockpile_tonnes": disrupted_stockpile,
                 "shocked_daily_demand": shocked_demand,
                 "coverage_days": shocked_coverage,
                 "shortfall_tonnes": shortfall,
@@ -84,8 +127,11 @@ def simulate_shock(scenario, reserves):
 
     return {
         "scenario_name": name,
-        "demand_spiup_pct": demand_spiup_pct,
+        "demand_spike_pct": demand_spike_pct,
+        "demand_spiup_pct": demand_spike_pct,
         "supply_disruption_pct": supply_disruption_pct,
+        "mission_days": mission_days,
+        "system_survives_mission": None if mission_days is None else survival_days >= mission_days,
         "total_shortfall_tonnes": total_shortfall_tonnes,
         "affected_minerals": affected_minerals,
         "survival_days": survival_days,
@@ -118,20 +164,23 @@ def _render_shock(result):
     lines = [
         f"# MineralShock Report \u2014 {result.get('scenario_name', '')}",
         "",
-        f"- demand_spiup_pct: {_fmt(result.get('demand_spiup_pct', 0))}",
+        f"- demand_spike_pct: {_fmt(result.get('demand_spike_pct', result.get('demand_spiup_pct', 0)))}",
         f"- supply_disruption_pct: {_fmt(result.get('supply_disruption_pct', 0))}",
+        f"- mission_days: {_fmt(result.get('mission_days'))}",
+        f"- system_survives_mission: {_fmt(result.get('system_survives_mission'))}",
         f"- total_shortfall_tonnes: {_fmt(result.get('total_shortfall_tonnes', 0))}",
         f"- survival_days: {_fmt(result.get('survival_days', 0))}",
         "",
         "## Per-mineral impact",
         "",
-        "| mineral | effective_stockpile_tonnes | shocked_daily_demand | coverage_days | shortfall_tonnes |",
-        "|---|---|---|---|---|",
+        "| mineral | effective_stockpile_tonnes | disrupted_stockpile_tonnes | shocked_daily_demand | coverage_days | shortfall_tonnes |",
+        "|---|---|---|---|---|---|",
     ]
     for m in result.get("per_mineral", []):
         lines.append(
             f"| {m.get('mineral', '')} "
             f"| {_fmt(m.get('effective_stockpile_tonnes', 0))} "
+            f"| {_fmt(m.get('disrupted_stockpile_tonnes', 0))} "
             f"| {_fmt(m.get('shocked_daily_demand', 0))} "
             f"| {_fmt(m.get('coverage_days', 0))} "
             f"| {_fmt(m.get('shortfall_tonnes', 0))} |"
